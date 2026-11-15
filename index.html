@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Magazzino Bar</title>
+  <script src="https://unpkg.com" type="text/javascript"></script>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 15px; background: #f4f4f9; color: #333; }
+    h1 { font-size: 22px; text-align: center; color: #1e293b; }
+    .card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 15px; }
+    input, select, button { width: 100%; padding: 12px; margin: 6px 0; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; }
+    button { background: #2563eb; color: white; border: none; font-weight: bold; cursor: pointer; }
+    button.scan { background: #059669; }
+    button.export { background: #475569; }
+    #reader { width: 100%; margin: 10px 0; display: none; }
+    .item { border-bottom: 1px solid #eee; padding: 10px 0; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 12px; background: #e2e8f0; margin-right: 5px; }
+    .low { background: #fee2e2; color: #b91c1c; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<h1>🍾 Gestione Magazzino Bar</h1>
+
+<div class="card">
+  <button class="scan" onclick="avviaScanner()">📷 Scansiona Codice a Barre</button>
+  <div id="reader"></div>
+  <input type="text" id="barcode" placeholder="Codice a barre (o scrivi manuale)">
+  <input type="text" id="nome" placeholder="Nome prodotto (es. Gin Tanqueray 1L)">
+  <input type="number" id="mag1" placeholder="Quantità Magazzino 1 (Centrale)">
+  <input type="number" id="mag2" placeholder="Quantità Magazzino 2 (Retro-banco)">
+  <input type="number" id="minima" placeholder="Scorta minima totale per riordino">
+  <button onclick="salvaProdotto()">💾 Salva / Aggiorna Prodotto</button>
+</div>
+
+<div class="card">
+  <h3>Inventario Attuale</h3>
+  <div id="lista"></div>
+  <button class="export" onclick="esportaOrdine()">📋 Copia Lista Ordini Sotto Scorta</button>
+</div>
+
+<script>
+  let prodotti = JSON.parse(localStorage.getItem('bar_db')) || {};
+  let html5QrcodeScanner = null;
+
+  function avviaScanner() {
+    document.getElementById('reader').style.display = 'block';
+    html5QrcodeScanner = new Html5Qrcode("reader");
+    html5QrcodeScanner.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 250, height: 150 } },
+      (decodedText) => {
+        document.getElementById('barcode').value = decodedText;
+        if (prodotti[decodedText]) {
+          document.getElementById('nome').value = prodotti[decodedText].nome;
+          document.getElementById('mag1').value = prodotti[decodedText].mag1;
+          document.getElementById('mag2').value = prodotti[decodedText].mag2;
+          document.getElementById('minima').value = prodotti[decodedText].minima;
+        }
+        html5QrcodeScanner.stop();
+        document.getElementById('reader').style.display = 'none';
+      },
+      (error) => {}
+    );
+  }
+
+  function salvaProdotto() {
+    const code = document.getElementById('barcode').value.trim();
+    const nome = document.getElementById('nome').value.trim();
+    const mag1 = parseInt(document.getElementById('mag1').value) || 0;
+    const mag2 = parseInt(document.getElementById('mag2').value) || 0;
+    const minima = parseInt(document.getElementById('minima').value) || 0;
+
+    if (!code || !nome) { alert("Inserisci almeno codice e nome prodotto!"); return; }
+
+    prodotti[code] = { nome, mag1, mag2, minima };
+    localStorage.setItem('bar_db', JSON.stringify(prodotti));
+    
+    document.getElementById('barcode').value = '';
+    document.getElementById('nome').value = '';
+    document.getElementById('mag1').value = '';
+    document.getElementById('mag2').value = '';
+    document.getElementById('minima').value = '';
+    aggiornaLista();
+  }
+
+  function aggiornaLista() {
+    const lista = document.getElementById('lista');
+    lista.innerHTML = '';
+    for (let code in prodotti) {
+      const p = prodotti[code];
+      const tot = p.mag1 + p.mag2;
+      const alertClass = tot <= p.minima ? 'low' : '';
+      lista.innerHTML += `
+        <div class="item">
+          <strong>${p.nome}</strong> <small>(${code})</small><br>
+          <span class="badge">Mag 1: ${p.mag1}</span>
+          <span class="badge">Mag 2: ${p.mag2}</span>
+          <span class="badge ${alertClass}">Tot: ${tot} / Min: ${p.minima}</span>
+        </div>`;
+    }
+  }
+
+  function esportaOrdine() {
+    let testo = "ORDINE BAR:\n";
+    let count = 0;
+    for (let code in prodotti) {
+      const p = prodotti[code];
+      const tot = p.mag1 + p.mag2;
+      if (tot <= p.minima) {
+        testo += `- ${p.nome}: rimasti ${tot} (minimo ${p.minima})\n`;
+        count++;
+      }
+    }
+    if (count === 0) { alert("Nessun prodotto sotto scorta!"); return; }
+    navigator.clipboard.writeText(testo);
+    alert("Lista ordini copiata! Puoi incollarla su WhatsApp o Email.");
+  }
+
+  aggiornaLista();
+</script>
+</body>
+</html>
