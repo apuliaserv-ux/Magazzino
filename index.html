@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Magazzino Bar</title>
-  <!-- Scanner Codici a Barre Ufficiale -->
+  <!-- Scanner Libreria -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js" type="text/javascript"></script>
-  <!-- Supabase Ufficiale -->
+  <!-- Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 15px; background: #0f172a; color: #f8fafc; }
@@ -15,14 +15,13 @@
     h3 { margin-top: 0; color: #38bdf8; font-size: 18px; }
     input, select, button { width: 100%; padding: 12px; margin: 6px 0; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #f8fafc; box-sizing: border-box; font-size: 16px; }
     input:focus { border-color: #38bdf8; outline: none; }
-    button { background: #2563eb; color: white; border: none; font-weight: bold; cursor: pointer; transition: background 0.2s; }
-    button:hover { background: #1d4ed8; }
-    button.scan { background: #059669; }
-    button.scan:hover { background: #047857; }
+    button, label.file-btn { display: block; width: 100%; padding: 12px; margin: 6px 0; border-radius: 8px; border: none; background: #2563eb; color: white; font-weight: bold; text-align: center; cursor: pointer; box-sizing: border-box; transition: background 0.2s; }
+    button:hover, label.file-btn:hover { background: #1d4ed8; }
+    label.file-btn { background: #059669; }
+    label.file-btn:hover { background: #047857; }
     button.export { background: #475569; }
     button.export:hover { background: #334155; }
-    #reader { width: 100%; margin: 10px 0; border-radius: 8px; overflow: hidden; background: #000; }
-    #reader button { background: #2563eb; color: white; padding: 8px 12px; margin: 5px 0; border-radius: 6px; font-size: 14px; width: auto; }
+    input[type="file"] { display: none; }
     .item { border-bottom: 1px solid #334155; padding: 12px 0; }
     .item:last-child { border-bottom: none; }
     .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; background: #334155; margin-right: 6px; margin-top: 4px; color: #e2e8f0; }
@@ -36,8 +35,12 @@
 <div id="syncStatus" class="sync-status">Stato: Connessione a Supabase...</div>
 
 <div class="card">
-  <button class="scan" onclick="inizializzaScanner()">📷 Apri Scanner Fotocamera</button>
-  <div id="reader"></div>
+  <!-- Pulsante nativo 100% stabile su tutti gli smartphone -->
+  <label class="file-btn">
+    📷 Fotografa Codice a Barre
+    <input type="file" accept="image/*" capture="environment" onchange="scansionaCodiceFile(event)">
+  </label>
+  
   <input type="text" id="barcode" placeholder="Codice a barre (o scrivi manuale)">
   <input type="text" id="nome" placeholder="Nome prodotto (es. Gin Tanqueray 1L)">
   <input type="number" id="mag1" placeholder="Quantità Magazzino 1 (Centrale)">
@@ -59,8 +62,6 @@
   
   let supabaseClient = null;
   let prodotti = {};
-  let scannerInizializzato = false;
-  let html5QrcodeScanner = null;
 
   try {
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -126,18 +127,21 @@
     }
   }
 
-  function inizializzaScanner() {
-    if (scannerInizializzato) return;
-    scannerInizializzato = true;
+  async function scansionaCodiceFile(event) {
+    if (event.target.files && event.target.files.length > 0) {
+      const file = event.target.files[0];
+      const html5QrCode = new Html5Qrcode("reader-temp");
+      
+      try {
+        let tempDiv = document.getElementById("reader-temp");
+        if (!tempDiv) {
+          tempDiv = document.createElement("div");
+          tempDiv.id = "reader-temp";
+          tempDiv.style.display = "none";
+          document.body.appendChild(tempDiv);
+        }
 
-    html5QrcodeScanner = new Html5QrcodeScanner(
-      "reader",
-      { fps: 10, qrbox: { width: 250, height: 150 }, rememberLastUsedCamera: true },
-      /* verbose= */ false
-    );
-
-    html5QrcodeScanner.render(
-      (decodedText) => {
+        const decodedText = await html5QrCode.scanFile(file, true);
         document.getElementById('barcode').value = decodedText;
         if (prodotti[decodedText]) {
           document.getElementById('nome').value = prodotti[decodedText].nome;
@@ -145,16 +149,12 @@
           document.getElementById('mag2').value = prodotti[decodedText].mag2;
           document.getElementById('minima').value = prodotti[decodedText].minima;
         }
-        // Ferma lo scanner dopo la lettura riuscita
-        html5QrcodeScanner.clear().catch(error => {
-          console.error("Errore chiusura scanner:", error);
-        });
-        scannerInizializzato = false;
-      },
-      (error) => {
-        // Errori di scansione continui (ignorati per pulizia console)
+        alert("Codice scansionato con successo: " + decodedText);
+      } catch (err) {
+        console.error("Errore scansione file:", err);
+        alert("Impossibile leggere il codice a barre dalla foto. Riprova inquadrando bene il codice.");
       }
-    );
+    }
   }
 
   function salvaProdotto() {
