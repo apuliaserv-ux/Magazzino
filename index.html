@@ -22,12 +22,16 @@
     label.file-btn:hover { background: #047857; }
     button.export { background: #475569; }
     button.export:hover { background: #334155; }
+    button.delete { background: #dc2626; }
+    button.delete:hover { background: #b91c1c; }
     input[type="file"] { display: none; }
-    .item { border-bottom: 1px solid #334155; padding: 12px 0; }
+    .item { border-bottom: 1px solid #334155; padding: 12px 0; cursor: pointer; transition: background 0.1s; }
+    .item:hover { background: #1e293b; padding-left: 5px; border-radius: 6px; }
     .item:last-child { border-bottom: none; }
     .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; background: #334155; margin-right: 6px; margin-top: 4px; color: #e2e8f0; }
     .low { background: #7f1d1d; color: #fca5a5; font-weight: bold; }
     .sync-status { font-size: 12px; text-align: center; margin-bottom: 10px; color: #38bdf8; font-weight: bold; }
+    .hint { font-size: 11px; color: #94a3b8; text-align: center; margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -42,16 +46,19 @@
     <input type="file" accept="image/*" capture="environment" id="cameraInput" onchange="scansionaCodiceNativo(event)">
   </label>
   
-  <input type="text" id="barcode" placeholder="Codice a barre (o scrivi manuale)">
+  <input type="text" id="barcode" placeholder="Codice a barre (o scrivi manuale)" oninput="verificaEsistenzaProdotto()">
   <input type="text" id="nome" placeholder="Nome prodotto (es. Gin Tanqueray 1L)">
   <input type="number" id="mag1" placeholder="Quantità Magazzino 1 (Centrale)">
   <input type="number" id="mag2" placeholder="Quantità Magazzino 2 (Retro-banco)">
   <input type="number" id="minima" placeholder="Scorta minima totale per riordino">
-  <button onclick="salvaProdotto()">💾 Salva / Aggiorna Prodotto</button>
+  
+  <button id="btnSalva" onclick="salvaProdotto()">💾 Salva Nuovo Prodotto</button>
+  <button id="btnElimina" class="delete" style="display:none;" onclick="eliminaProdotto()">🗑️ Elimina Prodotto</button>
+  <div class="hint">💡 Suggerimento: Clicca su un prodotto nella lista sotto per modificarlo rapidamente.</div>
 </div>
 
 <div class="card">
-  <h3>Inventario e Report</h3>
+  <h3>Inventario Attuale</h3>
   <div id="lista">Caricamento in corso...</div>
   
   <button class="export" style="background: #0284c7; margin-top: 12px;" onclick="esportaInventarioPDF()">📄 Scarica Inventario Completo (PDF)</button>
@@ -104,6 +111,45 @@
     aggiornaLista();
   }
 
+  function verificaEsistenzaProdotto() {
+    const code = document.getElementById('barcode').value.trim();
+    const btnSalva = document.getElementById('btnSalva');
+    const btnElimina = document.getElementById('btnElimina');
+
+    if (prodotti[code]) {
+      const p = prodotti[code];
+      document.getElementById('nome').value = p.nome;
+      document.getElementById('mag1').value = p.mag1;
+      document.getElementById('mag2').value = p.mag2;
+      document.getElementById('minima').value = p.minima;
+
+      btnSalva.innerText = "✏️ Aggiorna Prodotto Esistente";
+      btnSalva.style.background = "#0284c7";
+      btnElimina.style.display = "block";
+    } else {
+      btnSalva.innerText = "💾 Salva Nuovo Prodotto";
+      btnSalva.style.background = "#2563eb";
+      btnElimina.style.display = "none";
+    }
+  }
+
+  function selezionaProdottoPerModifica(code) {
+    const p = prodotti[code];
+    if (!p) return;
+
+    document.getElementById('barcode').value = code;
+    document.getElementById('nome').value = p.nome;
+    document.getElementById('mag1').value = p.mag1;
+    document.getElementById('mag2').value = p.mag2;
+    document.getElementById('minima').value = p.minima;
+
+    document.getElementById('btnSalva').innerText = "✏️ Aggiorna Prodotto Esistente";
+    document.getElementById('btnSalva').style.background = "#0284c7";
+    document.getElementById('btnElimina').style.display = "block";
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   async function salvaSuStorage(code, p) {
     prodotti[code] = p;
     localStorage.setItem('bar_db', JSON.stringify(prodotti));
@@ -134,6 +180,21 @@
     }
   }
 
+  async function eliminaProdottoCloud(code) {
+    if (supabaseClient) {
+      try {
+        const { error } = await supabaseClient
+          .from('magazzino_bar')
+          .delete()
+          .eq('barcode', code);
+
+        if (error) throw error;
+      } catch (err) {
+        console.error("Errore eliminazione Supabase:", err);
+      }
+    }
+  }
+
   async function scansionaCodiceNativo(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -159,18 +220,7 @@
       if (barcodes.length > 0) {
         const codiceTrovato = barcodes[0].rawValue;
         document.getElementById('barcode').value = codiceTrovato;
-        
-        if (prodotti[codiceTrovato]) {
-          document.getElementById('nome').value = prodotti[codiceTrovato].nome;
-          document.getElementById('mag1').value = prodotti[codiceTrovato].mag1;
-          document.getElementById('mag2').value = prodotti[codiceTrovato].mag2;
-          document.getElementById('minima').value = prodotti[codiceTrovato].minima;
-        } else {
-          document.getElementById('nome').value = '';
-          document.getElementById('mag1').value = '';
-          document.getElementById('mag2').value = '';
-          document.getElementById('minima').value = '';
-        }
+        verificaEsistenzaProdotto();
         document.getElementById('syncStatus').innerText = 'Stato: Cloud Sincronizzato (Supabase Attivo)';
       } else {
         alert("Nessun codice a barre rilevato. Assicurati che l'etichetta sia ben illuminata e riprova.");
@@ -201,6 +251,34 @@
     document.getElementById('mag1').value = '';
     document.getElementById('mag2').value = '';
     document.getElementById('minima').value = '';
+    document.getElementById('btnSalva').innerText = "💾 Salva Nuovo Prodotto";
+    document.getElementById('btnSalva').style.background = "#2563eb";
+    document.getElementById('btnElimina').style.display = "none";
+    
+    alert("Prodotto salvato con successo!");
+  }
+
+  async function eliminaProdotto() {
+    const code = document.getElementById('barcode').value.trim();
+    if (!code || !prodotti[code]) { alert("Seleziona un prodotto valido da eliminare."); return; }
+
+    if (confirm(`Sei sicuro di voler eliminare "${prodotti[code].nome}"?`)) {
+      delete prodotti[code];
+      localStorage.setItem('bar_db', JSON.stringify(prodotti));
+      await eliminaProdottoCloud(code);
+
+      document.getElementById('barcode').value = '';
+      document.getElementById('nome').value = '';
+      document.getElementById('mag1').value = '';
+      document.getElementById('mag2').value = '';
+      document.getElementById('minima').value = '';
+      document.getElementById('btnSalva').innerText = "💾 Salva Nuovo Prodotto";
+      document.getElementById('btnSalva').style.background = "#2563eb";
+      document.getElementById('btnElimina').style.display = "none";
+
+      aggiornaLista();
+      alert("Prodotto eliminato.");
+    }
   }
 
   function aggiornaLista() {
@@ -211,12 +289,13 @@
       lista.innerHTML = '<div style="color: #94a3b8; text-align: center; padding: 10px;">Nessun prodotto in magazzino.</div>';
       return;
     }
-    for (let code in prodotti) {
-      const p = prodotti[code];
+    for (let code in keys) {
+      const barcode = keys[code];
+      const p = prodotti[barcode];
       const tot = p.mag1 + p.mag2;
       lista.innerHTML += `
-        <div class="item">
-          <strong>${p.nome}</strong> <small style="color: #94a3b8;">(${code})</small><br>
+        <div class="item" onclick="selezionaProdottoPerModifica('${barcode}')">
+          <strong>${p.nome}</strong> <small style="color: #94a3b8;">(${barcode})</small><br>
           <span class="badge">Mag 1: ${p.mag1}</span>
           <span class="badge">Mag 2: ${p.mag2}</span>
           <span class="badge ${tot <= p.minima ? 'low' : ''}">Tot: ${tot} / Min: ${p.minima}</span>
@@ -224,7 +303,6 @@
     }
   }
 
-  // 1. Esportazione Inventario Completo in PDF
   function esportaInventarioPDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -263,7 +341,6 @@
     doc.save("inventario_magazzino_bar.pdf");
   }
 
-  // 2. Esportazione Lista Ordini Sotto Scorta in PDF
   function esportaOrdinePDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
