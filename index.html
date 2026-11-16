@@ -4,24 +4,35 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Magazzino Bar</title>
-  <script src="https://unpkg.com" type="text/javascript"></script>
+  <!-- Libreria Scanner Codici a Barre -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js" type="text/javascript"></script>
+  <!-- Libreria Supabase per database centralizzato -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
-    body { font-family: sans-serif; margin: 0; padding: 15px; background: #f4f4f9; color: #333; }
-    h1 { font-size: 22px; text-align: center; color: #1e293b; }
-    .card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 15px; }
-    input, select, button { width: 100%; padding: 12px; margin: 6px 0; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; }
-    button { background: #2563eb; color: white; border: none; font-weight: bold; cursor: pointer; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 15px; background: #0f172a; color: #f8fafc; }
+    h1 { font-size: 22px; text-align: center; color: #38bdf8; margin-bottom: 20px; }
+    .card { background: #1e293b; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); margin-bottom: 15px; border: 1px solid #334155; }
+    h3 { margin-top: 0; color: #38bdf8; font-size: 18px; }
+    input, select, button { width: 100%; padding: 12px; margin: 6px 0; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #f8fafc; box-sizing: border-box; font-size: 16px; }
+    input:focus { border-color: #38bdf8; outline: none; }
+    button { background: #2563eb; color: white; border: none; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #1d4ed8; }
     button.scan { background: #059669; }
+    button.scan:hover { background: #047857; }
     button.export { background: #475569; }
-    #reader { width: 100%; margin: 10px 0; display: none; }
-    .item { border-bottom: 1px solid #eee; padding: 10px 0; }
-    .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 12px; background: #e2e8f0; margin-right: 5px; }
-    .low { background: #fee2e2; color: #b91c1c; font-weight: bold; }
+    button.export:hover { background: #334155; }
+    #reader { width: 100%; margin: 10px 0; display: none; border-radius: 8px; overflow: hidden; }
+    .item { border-bottom: 1px solid #334155; padding: 12px 0; }
+    .item:last-child { border-bottom: none; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; background: #334155; margin-right: 6px; margin-top: 4px; color: #e2e8f0; }
+    .low { background: #7f1d1d; color: #fca5a5; font-weight: bold; }
+    .sync-status { font-size: 12px; text-align: center; margin-bottom: 10px; color: #94a3b8; }
   </style>
 </head>
 <body>
 
-<h1>🍾 Gestione Magazzino Bar</h1>
+<h1>📦 Gestione Magazzino Bar</h1>
+<div id="syncStatus" class="sync-status">Stato: Modalità locale (Configura Supabase per il cloud)</div>
 
 <div class="card">
   <button class="scan" onclick="avviaScanner()">📷 Scansiona Codice a Barre</button>
@@ -36,16 +47,76 @@
 
 <div class="card">
   <h3>Inventario Attuale</h3>
-  <div id="lista"></div>
-  <button class="export" onclick="esportaOrdine()">📋 Copia Lista Ordini Sotto Scorta</button>
+  <div id="lista">Caricamento in corso...</div>
+  <button class="export" onclick="esportaInventarioCSV()">📥 Scarica Inventario Completo (CSV)</button>
+  <button class="export" style="background: #0284c7; margin-top: 8px;" onclick="esportaOrdine()">📋 Copia Lista Ordini Sotto Scorta</button>
 </div>
 
 <script>
-  let prodotti = JSON.parse(localStorage.getItem('bar_db')) || {};
+  // =========================================================================
+  // CONFIGURAZIONE SUPABASE (Per il database centralizzato multi-dispositivo)
+  // Inserisci qui i tuoi dati di Supabase quando vuoi attivare il cloud.
+  // Lasciando vuote le stringhe, l'app userà la memoria locale (localStorage).
+  // =========================================================================
+  const SUPABASE_URL = ''; // https://yzqhvfsakhvejdlbntqj.supabase.co/rest/v1/
+  const SUPABASE_KEY = ''; // eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6cWh2ZnNha2h2ZWpkbGJudHFqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ4MzU2ODgsImV4cCI6MjExMDQxMTY4OH0.nbGUqjKygHyov2TZ1jLIUKgLHRZfjxI2-TLbjQ1rW4Q
+  
+  let supabaseClient = null;
+  let prodotti = {};
   let html5QrcodeScanner = null;
 
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    document.getElementById('syncStatus').innerText = 'Stato: Connesso a Supabase (Cloud Attivo)';
+  }
+
+  async function caricaDati() {
+    if (supabaseClient) {
+      try {
+        const { data, error } = await supabaseClient.from('magazzino_bar').select('*');
+        if (error) throw error;
+        prodotti = {};
+        if (data) {
+          data.forEach(row => {
+            prodotti[row.barcode] = {
+              nome: row.nome,
+              mag1: row.mag1,
+              mag2: row.mag2,
+              minima: row.minima
+            };
+          });
+        }
+      } catch (err) {
+        console.error("Errore caricamento Supabase:", err);
+        prodotti = JSON.parse(localStorage.getItem('bar_db')) || {};
+      }
+    } else {
+      prodotti = JSON.parse(localStorage.getItem('bar_db')) || {};
+    }
+    aggiornaLista();
+  }
+
+  async function salvaSuStorage(code, p) {
+    prodotti[code] = p;
+    // Backup locale immediato
+    localStorage.setItem('bar_db', JSON.stringify(prodotti));
+
+    if (supabaseClient) {
+      try {
+        const { error } = await supabaseClient
+          .from('magazzino_bar')
+          .upsert({ barcode: code, nome: p.nome, mag1: p.mag1, mag2: p.mag2, minima: p.minima }, { onConflict: 'barcode' });
+        if (error) console.error("Errore salvataggio cloud:", error);
+      } catch (err) {
+        console.error("Errore Supabase:", err);
+      }
+    }
+    aggiornaLista();
+  }
+
   function avviaScanner() {
-    document.getElementById('reader').style.display = 'block';
+    const readerDiv = document.getElementById('reader');
+    readerDiv.style.display = 'block';
     html5QrcodeScanner = new Html5Qrcode("reader");
     html5QrcodeScanner.start(
       { facingMode: "environment" },
@@ -59,10 +130,13 @@
           document.getElementById('minima').value = prodotti[decodedText].minima;
         }
         html5QrcodeScanner.stop();
-        document.getElementById('reader').style.display = 'none';
+        readerDiv.style.display = 'none';
       },
       (error) => {}
-    );
+    ).catch(err => {
+      alert("Impossibile accedere alla fotocamera. Assicurati di usare HTTPS o localhost.");
+      readerDiv.style.display = 'none';
+    });
   }
 
   function salvaProdotto() {
@@ -74,32 +148,55 @@
 
     if (!code || !nome) { alert("Inserisci almeno codice e nome prodotto!"); return; }
 
-    prodotti[code] = { nome, mag1, mag2, minima };
-    localStorage.setItem('bar_db', JSON.stringify(prodotti));
+    salvaSuStorage(code, { nome, mag1, mag2, minima });
     
     document.getElementById('barcode').value = '';
     document.getElementById('nome').value = '';
     document.getElementById('mag1').value = '';
     document.getElementById('mag2').value = '';
     document.getElementById('minima').value = '';
-    aggiornaLista();
   }
 
   function aggiornaLista() {
     const lista = document.getElementById('lista');
     lista.innerHTML = '';
+    const keys = Object.keys(prodotti);
+    if (keys.length === 0) {
+      lista.innerHTML = '<div style="color: #94a3b8; text-align: center; padding: 10px;">Nessun prodotto in magazzino.</div>';
+      return;
+    }
     for (let code in prodotti) {
       const p = prodotti[code];
       const tot = p.mag1 + p.mag2;
       const alertClass = tot <= p.minima ? 'low' : '';
       lista.innerHTML += `
         <div class="item">
-          <strong>${p.nome}</strong> <small>(${code})</small><br>
+          <strong>${p.nome}</strong> <small style="color: #94a3b8;">(${code})</small><br>
           <span class="badge">Mag 1: ${p.mag1}</span>
           <span class="badge">Mag 2: ${p.mag2}</span>
-          <span class="badge ${alertClass}">Tot: ${tot} / Min: ${p.minima}</span>
+          <span class="badge ${alertStatus(tot, p.minima)}">Tot: ${tot} / Min: ${p.minima}</span>
         </div>`;
     }
+  }
+
+  function alertStatus(tot, minima) {
+    return tot <= minima ? 'low' : '';
+  }
+
+  function esportaInventarioCSV() {
+    let csvContent = "data:text/csv;charset=utf-8,Codice Barre;Nome Prodotto;Magazzino 1;Magazzino 2;Totale;Scorta Minima\n";
+    for (let code in prodotti) {
+      const p = prodotti[code];
+      const tot = p.mag1 + p.mag2;
+      csvContent += `"${code}","${p.nome}",${p.mag1},${p.mag2},${tot},${p.minima}\n`;
+    }
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "inventario_magazzino_bar.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   function esportaOrdine() {
@@ -118,7 +215,8 @@
     alert("Lista ordini copiata! Puoi incollarla su WhatsApp o Email.");
   }
 
-  aggiornaLista();
+  // Carica i dati all'avvio
+  caricaDati();
 </script>
 </body>
 </html>
