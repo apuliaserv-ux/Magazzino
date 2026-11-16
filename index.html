@@ -21,7 +21,7 @@
     button.scan:hover { background: #047857; }
     button.export { background: #475569; }
     button.export:hover { background: #334155; }
-    #reader { width: 100%; min-height: 200px; margin: 10px 0; display: none; border-radius: 8px; overflow: hidden; background: #000; }
+    #reader { width: 100%; min-height: 220px; margin: 10px 0; display: none; border-radius: 8px; overflow: hidden; background: #000; }
     .item { border-bottom: 1px solid #334155; padding: 12px 0; }
     .item:last-child { border-bottom: none; }
     .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; background: #334155; margin-right: 6px; margin-top: 4px; color: #e2e8f0; }
@@ -122,28 +122,45 @@
         await html5QrcodeScanner.stop();
       }
 
-      await html5QrcodeScanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 150 } },
-        (decodedText) => {
-          document.getElementById('barcode').value = decodedText;
-          if (prodotti[decodedText]) {
-            document.getElementById('nome').value = prodotti[decodedText].nome;
-            document.getElementById('mag1').value = prodotti[decodedText].mag1;
-            document.getElementById('mag2').value = prodotti[decodedText].mag2;
-            document.getElementById('minima').value = prodotti[decodedText].minima;
+      // Richiede i permessi e ottiene l'elenco delle telecamere del dispositivo
+      const devices = await Html5Qrcode.getCameras();
+      if (devices && devices.length) {
+        let cameraId = devices[0].id;
+        // Cerca la fotocamera posteriore se disponibile
+        for (let device of devices) {
+          const label = device.label.toLowerCase();
+          if (label.includes('back') || label.includes('rear') || label.includes('posteriore') || label.includes('environment')) {
+            cameraId = device.id;
+            break;
           }
-          html5QrcodeScanner.stop().then(() => {
-            readerDiv.style.display = 'none';
-          }).catch(() => {
-            readerDiv.style.display = 'none';
-          });
-        },
-        (error) => {}
-      );
+        }
+
+        await html5QrcodeScanner.start(
+          cameraId,
+          { fps: 10, qrbox: { width: 250, height: 150 } },
+          (decodedText) => {
+            document.getElementById('barcode').value = decodedText;
+            if (prodotti[decodedText]) {
+              document.getElementById('nome').value = prodotti[decodedText].nome;
+              document.getElementById('mag1').value = prodotti[decodedText].mag1;
+              document.getElementById('mag2').value = prodotti[decodedText].mag2;
+              document.getElementById('minima').value = prodotti[decodedText].minima;
+            }
+            html5QrcodeScanner.stop().then(() => {
+              readerDiv.style.display = 'none';
+            }).catch(() => {
+              readerDiv.style.display = 'none';
+            });
+          },
+          (error) => {}
+        );
+      } else {
+        alert("Nessuna fotocamera rilevata sul dispositivo.");
+        readerDiv.style.display = 'none';
+      }
     } catch (err) {
       console.error("Errore fotocamera:", err);
-      alert("Impossibile accedere alla fotocamera. Assicurati di aprire il link in Chrome o Safari (non dentro altre app) e di aver autorizzato i permessi.");
+      alert("Impossibile avviare la fotocamera. Verifica di aver autorizzato i permessi nel browser (Chrome/Safari).");
       readerDiv.style.display = 'none';
     }
   }
