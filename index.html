@@ -35,7 +35,7 @@
 <div id="syncStatus" class="sync-status">Stato: Connessione a Supabase...</div>
 
 <div class="card">
-  <!-- Pulsante nativo 100% stabile su tutti gli smartphone -->
+  <!-- Pulsante fotocamera nativa stabile -->
   <label class="file-btn">
     📷 Fotografa Codice a Barre
     <input type="file" accept="image/*" capture="environment" onchange="scansionaCodiceFile(event)">
@@ -82,18 +82,20 @@
       prodotti = {};
       if (data) {
         data.forEach(row => {
-          prodotti[row.barcode] = {
-            nome: row.nome,
-            mag1: row.mag1,
-            mag2: row.mag2,
-            minima: row.minima
-          };
+          if (row.barcode) {
+            prodotti[row.barcode] = {
+              nome: row.nome,
+              mag1: row.mag1,
+              mag2: row.mag2,
+              minima: row.minima
+            };
+          }
         });
       }
       document.getElementById('syncStatus').innerText = 'Stato: Cloud Sincronizzato (Supabase Attivo)';
     } catch (err) {
       console.error("Errore caricamento Supabase:", err.message);
-      document.getElementById('syncStatus').innerText = 'Stato: Errore Supabase (Controlla permessi tabella)';
+      document.getElementById('syncStatus').innerText = 'Stato: Modalità Offline / Errore Supabase';
       prodotti = JSON.parse(localStorage.getItem('bar_db')) || {};
     }
     aggiornaLista();
@@ -117,12 +119,14 @@
           }, { onConflict: 'barcode' });
 
         if (error) {
-          console.error("Errore salvataggio Supabase:", error.message);
+          console.error("Errore salvataggio Supabase:", error);
+          alert("Salvato in locale, ma errore su Supabase: " + error.message);
         } else {
           document.getElementById('syncStatus').innerText = 'Stato: Cloud Sincronizzato (Supabase Attivo)';
         }
       } catch (err) {
         console.error("Eccezione Supabase:", err);
+        alert("Errore di rete verso Supabase: " + err.message);
       }
     }
   }
@@ -130,18 +134,10 @@
   async function scansionaCodiceFile(event) {
     if (event.target.files && event.target.files.length > 0) {
       const file = event.target.files[0];
-      const html5QrCode = new Html5Qrcode("reader-temp");
-      
       try {
-        let tempDiv = document.getElementById("reader-temp");
-        if (!tempDiv) {
-          tempDiv = document.createElement("div");
-          tempDiv.id = "reader-temp";
-          tempDiv.style.display = "none";
-          document.body.appendChild(tempDiv);
-        }
-
+        const html5QrCode = new Html5Qrcode("reader-temp", /* verbose= */ false);
         const decodedText = await html5QrCode.scanFile(file, true);
+        
         document.getElementById('barcode').value = decodedText;
         if (prodotti[decodedText]) {
           document.getElementById('nome').value = prodotti[decodedText].nome;
@@ -149,11 +145,12 @@
           document.getElementById('mag2').value = prodotti[decodedText].mag2;
           document.getElementById('minima').value = prodotti[decodedText].minima;
         }
-        alert("Codice scansionato con successo: " + decodedText);
+        alert("Codice a barre letto con successo: " + decodedText);
       } catch (err) {
-        console.error("Errore scansione file:", err);
-        alert("Impossibile leggere il codice a barre dalla foto. Riprova inquadrando bene il codice.");
+        console.error("Errore decodifica foto:", err);
+        alert("Impossibile rilevare il codice a barre dalla foto. Assicurati di inquadrare bene il codice a barre e che ci sia abbastanza luce.");
       }
+      event.target.value = '';
     }
   }
 
@@ -230,5 +227,7 @@
 
   caricaDati();
 </script>
+<!-- Div invisibile di servizio per la scansione delle foto -->
+<div id="reader-temp" style="display:none;"></div>
 </body>
 </html>
