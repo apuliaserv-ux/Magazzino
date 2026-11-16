@@ -6,6 +6,9 @@
   <title>Magazzino Bar</title>
   <!-- Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Librerie jsPDF per esportazione in PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 15px; background: #0f172a; color: #f8fafc; }
     h1 { font-size: 22px; text-align: center; color: #38bdf8; margin-bottom: 20px; }
@@ -48,10 +51,12 @@
 </div>
 
 <div class="card">
-  <h3>Inventario Attuale</h3>
+  <h3>Inventario e Report</h3>
   <div id="lista">Caricamento in corso...</div>
-  <button class="export" onclick="esportaInventarioCSV()">📥 Scarica Inventario Completo (CSV)</button>
-  <button class="export" style="background: #0284c7; margin-top: 8px;" onclick="esportaOrdine()">📋 Copia Lista Ordini Sotto Scorta</button>
+  
+  <button class="export" style="background: #0284c7; margin-top: 12px;" onclick="esportaInventarioPDF()">📄 Scarica Inventario Completo (PDF)</button>
+  <button class="export" style="background: #dc2626; margin-top: 8px;" onclick="esportaOrdinePDF()">📋 Scarica Lista Ordini Sotto Scorta (PDF)</button>
+  <button class="export" style="background: #475569; margin-top: 8px;" onclick="esportaInventarioCSV()">📥 Scarica Backup (CSV)</button>
 </div>
 
 <script>
@@ -219,6 +224,88 @@
     }
   }
 
+  // 1. Esportazione Inventario Completo in PDF
+  function esportaInventarioPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    doc.setFontSize(18);
+    doc.setTextColor(30, 41, 59);
+    doc.text("Inventario Completo - Magazzino Bar", 14, 20);
+
+    doc.setFontSize(10);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Data generazione: " + new Date().toLocaleString(), 14, 28);
+
+    const headers = [["Codice Barre", "Nome Prodotto", "Mag 1", "Mag 2", "Totale", "Scorta Min"]];
+    const data = [];
+
+    for (let code in prodotti) {
+      const p = prodotti[code];
+      const tot = p.mag1 + p.mag2;
+      data.push([code, p.nome, p.mag1, p.mag2, tot, p.minima]);
+    }
+
+    if (data.length === 0) {
+      alert("Nessun prodotto presente in magazzino!");
+      return;
+    }
+
+    doc.autoTable({
+      startY: 35,
+      head: headers,
+      body: data,
+      theme: 'grid',
+      headStyles: { fillColor: [37, 99, 235] },
+      styles: { fontSize: 10, cellPadding: 4 }
+    });
+
+    doc.save("inventario_magazzino_bar.pdf");
+  }
+
+  // 2. Esportazione Lista Ordini Sotto Scorta in PDF
+  function esportaOrdinePDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    doc.setFontSize(18);
+    doc.setTextColor(220, 38, 38);
+    doc.text("Lista Ordini Sotto Scorta", 14, 20);
+
+    doc.setFontSize(10);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Data generazione: " + new Date().toLocaleString(), 14, 28);
+
+    const headers = [["Codice Barre", "Nome Prodotto", "Mag 1", "Mag 2", "Totale", "Scorta Min"]];
+    const data = [];
+    let count = 0;
+
+    for (let code in prodotti) {
+      const p = prodotti[code];
+      const tot = p.mag1 + p.mag2;
+      if (tot <= p.minima) {
+        data.push([code, p.nome, p.mag1, p.mag2, tot, p.minima]);
+        count++;
+      }
+    }
+
+    if (count === 0) {
+      alert("Ottimo! Nessun prodotto è attualmente sotto scorta.");
+      return;
+    }
+
+    doc.autoTable({
+      startY: 35,
+      head: headers,
+      body: data,
+      theme: 'grid',
+      headStyles: { fillColor: [220, 38, 38] },
+      styles: { fontSize: 10, cellPadding: 4 }
+    });
+
+    doc.save("ordini_sotto_scorta.pdf");
+  }
+
   function esportaInventarioCSV() {
     let csvContent = "data:text/csv;charset=utf-8,Codice Barre;Nome Prodotto;Magazzino 1;Magazzino 2;Totale;Scorta Minima\n";
     for (let code in prodotti) {
@@ -233,22 +320,6 @@
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  }
-
-  function esportaOrdine() {
-    let testo = "ORDINE BAR:\n";
-    let count = 0;
-    for (let code in prodotti) {
-      const p = prodotti[code];
-      const tot = p.mag1 + p.mag2;
-      if (tot <= p.minima) {
-        testo += `- ${p.nome}: rimasti ${tot} (minimo ${p.minima})\n`;
-        count++;
-      }
-    }
-    if (count === 0) { alert("Nessun prodotto sotto scorta!"); return; }
-    navigator.clipboard.writeText(testo);
-    alert("Lista ordini copiata!");
   }
 
   caricaDati();
