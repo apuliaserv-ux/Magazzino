@@ -35,7 +35,7 @@
 <div id="syncStatus" class="sync-status">Stato: Connessione a Supabase...</div>
 
 <div class="card">
-  <!-- Pulsante fotocamera nativa stabile -->
+  <!-- Pulsante fotocamera con ottimizzazione scatto -->
   <label class="file-btn">
     📷 Fotografa Codice a Barre
     <input type="file" accept="image/*" capture="environment" onchange="scansionaCodiceFile(event)">
@@ -131,103 +131,13 @@
     }
   }
 
-  async function scansionaCodiceFile(event) {
-    if (event.target.files && event.target.files.length > 0) {
-      const file = event.target.files[0];
-      try {
-        const html5QrCode = new Html5Qrcode("reader-temp", /* verbose= */ false);
-        const decodedText = await html5QrCode.scanFile(file, true);
-        
-        document.getElementById('barcode').value = decodedText;
-        if (prodotti[decodedText]) {
-          document.getElementById('nome').value = prodotti[decodedText].nome;
-          document.getElementById('mag1').value = prodotti[decodedText].mag1;
-          document.getElementById('mag2').value = prodotti[decodedText].mag2;
-          document.getElementById('minima').value = prodotti[decodedText].minima;
-        }
-        alert("Codice a barre letto con successo: " + decodedText);
-      } catch (err) {
-        console.error("Errore decodifica foto:", err);
-        alert("Impossibile rilevare il codice a barre dalla foto. Assicurati di inquadrare bene il codice a barre e che ci sia abbastanza luce.");
-      }
-      event.target.value = '';
-    }
-  }
-
-  function salvaProdotto() {
-    const code = document.getElementById('barcode').value.trim();
-    const nome = document.getElementById('nome').value.trim();
-    const mag1 = parseInt(document.getElementById('mag1').value) || 0;
-    const mag2 = parseInt(document.getElementById('mag2').value) || 0;
-    const minima = parseInt(document.getElementById('minima').value) || 0;
-
-    if (!code || !nome) { alert("Inserisci almeno codice e nome prodotto!"); return; }
-
-    salvaSuStorage(code, { nome, mag1, mag2, minima });
-    
-    document.getElementById('barcode').value = '';
-    document.getElementById('nome').value = '';
-    document.getElementById('mag1').value = '';
-    document.getElementById('mag2').value = '';
-    document.getElementById('minima').value = '';
-  }
-
-  function aggiornaLista() {
-    const lista = document.getElementById('lista');
-    lista.innerHTML = '';
-    const keys = Object.keys(prodotti);
-    if (keys.length === 0) {
-      lista.innerHTML = '<div style="color: #94a3b8; text-align: center; padding: 10px;">Nessun prodotto in magazzino.</div>';
-      return;
-    }
-    for (let code in prodotti) {
-      const p = prodotti[code];
-      const tot = p.mag1 + p.mag2;
-      lista.innerHTML += `
-        <div class="item">
-          <strong>${p.nome}</strong> <small style="color: #94a3b8;">(${code})</small><br>
-          <span class="badge">Mag 1: ${p.mag1}</span>
-          <span class="badge">Mag 2: ${p.mag2}</span>
-          <span class="badge ${tot <= p.minima ? 'low' : ''}">Tot: ${tot} / Min: ${p.minima}</span>
-        </div>`;
-    }
-  }
-
-  function esportaInventarioCSV() {
-    let csvContent = "data:text/csv;charset=utf-8,Codice Barre;Nome Prodotto;Magazzino 1;Magazzino 2;Totale;Scorta Minima\n";
-    for (let code in prodotti) {
-      const p = prodotti[code];
-      const tot = p.mag1 + p.mag2;
-      csvContent += `"${code}","${p.nome}",${p.mag1},${p.mag2},${tot},${p.minima}\n`;
-    }
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "inventario_magazzino_bar.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
-
-  function esportaOrdine() {
-    let testo = "ORDINE BAR:\n";
-    let count = 0;
-    for (let code in prodotti) {
-      const p = prodotti[code];
-      const tot = p.mag1 + p.mag2;
-      if (tot <= p.minima) {
-        testo += `- ${p.nome}: rimasti ${tot} (minimo ${p.minima})\n`;
-        count++;
-      }
-    }
-    if (count === 0) { alert("Nessun prodotto sotto scorta!"); return; }
-    navigator.clipboard.writeText(testo);
-    alert("Lista ordini copiata!");
-  }
-
-  caricaDati();
-</script>
-<!-- Div invisibile di servizio per la scansione delle foto -->
-<div id="reader-temp" style="display:none;"></div>
-</body>
-</html>
+  // Funzione per ridimensionare l'immagine prima della lettura (evita blocchi di risoluzione)
+  function riduciImmagine(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1280;
+          let width = img
