@@ -60,7 +60,6 @@
   let prodotti = {};
   let html5QrcodeScanner = null;
 
-  // Inizializzazione sicura di Supabase
   try {
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   } catch (e) {
@@ -89,19 +88,15 @@
         });
       }
       document.getElementById('syncStatus').innerText = 'Stato: Cloud Sincronizzato (Supabase Attivo)';
-      document.getElementById('syncStatus.style.color = #4ade80;');
     } catch (err) {
       console.error("Errore caricamento Supabase:", err.message);
       document.getElementById('syncStatus').innerText = 'Stato: Errore Supabase (Controlla permessi tabella)';
-      document.getElementById('syncStatus').style.color = '#f87171';
-      // Se fallisce il cloud, carica dal locale per non lasciare la schermata vuota
       prodotti = JSON.parse(localStorage.getItem('bar_db')) || {};
     }
     aggiornaLista();
   }
 
   async function salvaSuStorage(code, p) {
-    // Aggiorna subito in locale per reattività immediata
     prodotti[code] = p;
     localStorage.setItem('bar_db', JSON.stringify(prodotti));
     aggiornaLista();
@@ -120,7 +115,6 @@
 
         if (error) {
           console.error("Errore salvataggio Supabase:", error.message);
-          alert("Attenzione: Salvato in locale ma errore cloud: " + error.message);
         } else {
           document.getElementById('syncStatus').innerText = 'Stato: Cloud Sincronizzato (Supabase Attivo)';
         }
@@ -134,8 +128,6 @@
     const readerDiv = document.getElementById('reader');
     readerDiv.style.display = 'block';
 
-    await new Promise(resolve => setTimeout(resolve, 300));
-
     if (!html5QrcodeScanner) {
       html5QrcodeScanner = new Html5Qrcode("reader");
     }
@@ -145,43 +137,29 @@
         await html5QrcodeScanner.stop();
       }
 
-      const devices = await Html5Qrcode.getCameras();
-      if (devices && devices.length) {
-        let cameraId = devices[0].id;
-        for (let device of devices) {
-          const label = device.label.toLowerCase();
-          if (label.includes('back') || label.includes('rear') || label.includes('posteriore') || label.includes('environment')) {
-            cameraId = device.id;
-            break;
+      // Avvio diretto con la fotocamera posteriore
+      await html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 150 } },
+        (decodedText) => {
+          document.getElementById('barcode').value = decodedText;
+          if (prodotti[decodedText]) {
+            document.getElementById('nome').value = prodotti[decodedText].nome;
+            document.getElementById('mag1').value = prodotti[decodedText].mag1;
+            document.getElementById('mag2').value = prodotti[decodedText].mag2;
+            document.getElementById('minima').value = prodotti[decodedText].minima;
           }
-        }
-
-        await html5QrcodeScanner.start(
-          cameraId,
-          { fps: 10, qrbox: { width: 250, height: 150 } },
-          (decodedText) => {
-            document.getElementById('barcode').value = decodedText;
-            if (prodotti[decodedText]) {
-              document.getElementById('nome').value = prodotti[decodedText].nome;
-              document.getElementById('mag1').value = prodotti[decodedText].mag1;
-              document.getElementById('mag2').value = prodotti[decodedText].mag2;
-              document.getElementById('minima').value = prodotti[decodedText].minima;
-            }
-            html5QrcodeScanner.stop().then(() => {
-              readerDiv.style.display = 'none';
-            }).catch(() => {
-              readerDiv.style.display = 'none';
-            });
-          },
-          (error) => {}
-        );
-      } else {
-        alert("Nessuna fotocamera rilevata sul dispositivo.");
-        readerDiv.style.display = 'none';
-      }
+          html5QrcodeScanner.stop().then(() => {
+            readerDiv.style.display = 'none';
+          }).catch(() => {
+            readerDiv.style.display = 'none';
+          });
+        },
+        (error) => {}
+      );
     } catch (err) {
       console.error("Errore fotocamera:", err);
-      alert("Impossibile avviare la fotocamera. Verifica i permessi del browser.");
+      alert("Impossibile avviare la fotocamera. Autorizza l'accesso nelle impostazioni del browser.");
       readerDiv.style.display = 'none';
     }
   }
@@ -244,7 +222,6 @@
   function esportaOrdine() {
     let testo = "ORDINE BAR:\n";
     let count = 0;
-    for (let code in policies) { /* safety */ }
     for (let code in prodotti) {
       const p = prodotti[code];
       const tot = p.mag1 + p.mag2;
