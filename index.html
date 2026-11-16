@@ -32,7 +32,7 @@
 <body>
 
 <h1>📦 Gestione Magazzino Bar</h1>
-<div id="syncStatus" class="sync-status">Stato: Modalità locale (Configura Supabase per il cloud)</div>
+<div id="syncStatus" class="sync-status">Stato: Connessione in corso...</div>
 
 <div class="card">
   <button class="scan" onclick="avviaScanner()">📷 Scansiona Codice a Barre</button>
@@ -53,8 +53,11 @@
 </div>
 
 <script>
-  const SUPABASE_URL = // https://yzqhvfsakhvejdlbntqj.supabase.co/rest/v1/
-  const SUPABASE_KEY = // eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6cWh2ZnNha2h2ZWpkbGJudHFqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ4MzU2ODgsImV4cCI6MjExMDQxMTY4OH0.nbGUqjKygHyov2TZ1jLIUKgLHRZfjxI2-TLbjQ1rW4Q
+  // =========================================================================
+  // CONFIGURAZIONE SUPABASE CORRETTA
+  // =========================================================================
+  const SUPABASE_URL = 'https://yzqhvfsakhvejdlbntqj.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6cWh2ZnNha2h2ZWpkbGJudHFqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ4MzU2ODgsImV4cCI6MjExMDQxMTY4OH0.nbGUqjKygHyov2TZ1jLIUKgLHRZfjxI2-TLbjQ1rW4Q';
   
   let supabaseClient = null;
   let prodotti = {};
@@ -63,6 +66,8 @@
   if (SUPABASE_URL && SUPABASE_KEY) {
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     document.getElementById('syncStatus').innerText = 'Stato: Connesso a Supabase (Cloud Attivo)';
+  } else {
+    document.getElementById('syncStatus').innerText = 'Stato: Modalità locale (Supabase non configurato)';
   }
 
   async function caricaDati() {
@@ -93,7 +98,6 @@
 
   async function salvaSuStorage(code, p) {
     prodotti[code] = p;
-    // Backup locale immediato
     localStorage.setItem('bar_db', JSON.stringify(prodotti));
 
     if (supabaseClient) {
@@ -109,29 +113,43 @@
     aggiornaLista();
   }
 
-  function avviaScanner() {
+  async function avviaScanner() {
     const readerDiv = document.getElementById('reader');
     readerDiv.style.display = 'block';
-    html5QrcodeScanner = new Html5Qrcode("reader");
-    html5QrcodeScanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 250, height: 150 } },
-      (decodedText) => {
-        document.getElementById('barcode').value = decodedText;
-        if (prodotti[decodedText]) {
-          document.getElementById('nome').value = prodotti[decodedText].nome;
-          document.getElementById('mag1').value = prodotti[decodedText].mag1;
-          document.getElementById('mag2').value = prodotti[decodedText].mag2;
-          document.getElementById('minima').value = prodotti[decodedText].minima;
-        }
-        html5QrcodeScanner.stop();
-        readerDiv.style.display = 'none';
-      },
-      (error) => {}
-    ).catch(err => {
-      alert("Impossibile accedere alla fotocamera. Assicurati di usare HTTPS o localhost.");
+
+    if (!html5QrcodeScanner) {
+      html5QrcodeScanner = new Html5Qrcode("reader");
+    }
+
+    try {
+      if (html5QrcodeScanner.isScanning) {
+        await html5QrcodeScanner.stop();
+      }
+
+      await html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 150 } },
+        (decodedText) => {
+          document.getElementById('barcode').value = decodedText;
+          if (prodotti[decodedText]) {
+            document.getElementById('nome').value = prodotti[decodedText].nome;
+            document.getElementById('mag1').value = prodotti[decodedText].mag1;
+            document.getElementById('mag2').value = prodotti[decodedText].mag2;
+            document.getElementById('minima').value = prodotti[decodedText].minima;
+          }
+          html5QrcodeScanner.stop().then(() => {
+            readerDiv.style.display = 'none';
+          }).catch(() => {
+            readerDiv.style.display = 'none';
+          });
+        },
+        (error) => {}
+      );
+    } catch (err) {
+      console.error("Errore fotocamera:", err);
+      alert("Impossibile accedere alla fotocamera. Assicurati di aprire l'app tramite il link HTTPS di GitHub Pages e di consentire l'accesso alla fotocamera quando richiesto dal browser.");
       readerDiv.style.display = 'none';
-    });
+    }
   }
 
   function salvaProdotto() {
@@ -205,12 +223,11 @@
         count++;
       }
     }
-    if (count === 0) { alert("Nessun prodotto sotto scorta!"); return; }
+    if (count ===0) { alert("Nessun prodotto sotto scorta!"); return; }
     navigator.clipboard.writeText(testo);
     alert("Lista ordini copiata! Puoi incollarla su WhatsApp o Email.");
   }
 
-  // Carica i dati all'avvio
   caricaDati();
 </script>
 </body>
