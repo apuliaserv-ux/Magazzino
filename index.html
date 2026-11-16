@@ -21,7 +21,7 @@
     button.scan:hover { background: #047857; }
     button.export { background: #475569; }
     button.export:hover { background: #334155; }
-    #reader { width: 100%; margin: 10px 0; display: none; border-radius: 8px; overflow: hidden; }
+    #reader { width: 100%; min-height: 200px; margin: 10px 0; display: none; border-radius: 8px; overflow: hidden; background: #000; }
     .item { border-bottom: 1px solid #334155; padding: 12px 0; }
     .item:last-child { border-bottom: none; }
     .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; background: #334155; margin-right: 6px; margin-top: 4px; color: #e2e8f0; }
@@ -53,9 +53,6 @@
 </div>
 
 <script>
-  // =========================================================================
-  // CONFIGURAZIONE SUPABASE CORRETTA
-  // =========================================================================
   const SUPABASE_URL = 'https://yzqhvfsakhvejdlbntqj.supabase.co';
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6cWh2ZnNha2h2ZWpkbGJudHFqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ4MzU2ODgsImV4cCI6MjExMDQxMTY4OH0.nbGUqjKygHyov2TZ1jLIUKgLHRZfjxI2-TLbjQ1rW4Q';
   
@@ -67,7 +64,7 @@
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     document.getElementById('syncStatus').innerText = 'Stato: Connesso a Supabase (Cloud Attivo)';
   } else {
-    document.getElementById('syncStatus').innerText = 'Stato: Modalità locale (Supabase non configurato)';
+    document.getElementById('syncStatus').innerText = 'Stato: Modalità locale';
   }
 
   async function caricaDati() {
@@ -102,10 +99,9 @@
 
     if (supabaseClient) {
       try {
-        const { error } = await supabaseClient
+        await supabaseClient
           .from('magazzino_bar')
           .upsert({ barcode: code, nome: p.nome, mag1: p.mag1, mag2: p.mag2, minima: p.minima }, { onConflict: 'barcode' });
-        if (error) console.error("Errore salvataggio cloud:", error);
       } catch (err) {
         console.error("Errore Supabase:", err);
       }
@@ -147,7 +143,7 @@
       );
     } catch (err) {
       console.error("Errore fotocamera:", err);
-      alert("Impossibile accedere alla fotocamera. Assicurati di aprire l'app tramite il link HTTPS di GitHub Pages e di consentire l'accesso alla fotocamera quando richiesto dal browser.");
+      alert("Impossibile accedere alla fotocamera. Assicurati di aprire il link in Chrome o Safari (non dentro altre app) e di aver autorizzato i permessi.");
       readerDiv.style.display = 'none';
     }
   }
@@ -181,19 +177,14 @@
     for (let code in prodotti) {
       const p = prodotti[code];
       const tot = p.mag1 + p.mag2;
-      const alertClass = tot <= p.minima ? 'low' : '';
       lista.innerHTML += `
         <div class="item">
           <strong>${p.nome}</strong> <small style="color: #94a3b8;">(${code})</small><br>
           <span class="badge">Mag 1: ${p.mag1}</span>
           <span class="badge">Mag 2: ${p.mag2}</span>
-          <span class="badge ${alertStatus(tot, p.minima)}">Tot: ${tot} / Min: ${p.minima}</span>
+          <span class="badge ${tot <= p.minima ? 'low' : ''}">Tot: ${tot} / Min: ${p.minima}</span>
         </div>`;
     }
-  }
-
-  function alertStatus(tot, minima) {
-    return tot <= minima ? 'low' : '';
   }
 
   function esportaInventarioCSV() {
@@ -223,9 +214,9 @@
         count++;
       }
     }
-    if (count ===0) { alert("Nessun prodotto sotto scorta!"); return; }
+    if (count === 0) { alert("Nessun prodotto sotto scorta!"); return; }
     navigator.clipboard.writeText(testo);
-    alert("Lista ordini copiata! Puoi incollarla su WhatsApp o Email.");
+    alert("Lista ordini copiata!");
   }
 
   caricaDati();
